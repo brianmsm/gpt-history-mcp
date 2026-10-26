@@ -6,7 +6,7 @@
   "author": "Yunosuke Yoshino",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YunosukeYoshino/gpt-history-mcp.git"
+    "url": "git+https://github.com/brianmsm/gpt-history-mcp.git"
   },
   "keywords": [
     "mcp",
@@ -41,5 +41,6 @@
   "scripts": {
     "start": "bun src/index.ts",
     "test": "bun test"
-  }
+  },
+  "private": true
 }

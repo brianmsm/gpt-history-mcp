@@ -25,11 +25,13 @@ Claude: → search_chatgpt_messages("ICP") → get_chatgpt_chat("6aa…") → �
 
 ## 必要なもの
 
-- macOS と、**ChatGPT デスクトップアプリ**（Codex 統合版）。ログイン済みで、同期が済んでいること
+- macOS の **ChatGPT デスクトップアプリ**（Codex 統合版）、または ChatGPT 会話カタログが同期済みの Linux/Omarchy 環境
 - ChatGPT ログインが入った `~/.codex/auth.json`。`codex login` を実行し、ChatGPT アカウントでログインすると作られます。
 - [Bun](https://bun.sh) 1.4 以上。サーバーは必ず Bun で動かしてください。ほかの HTTP クライアントは Cloudflare にブロックされます。
 
 ## インストール
+
+この fork は npm 公開版ではなくローカルの Git チェックアウトから実行します。元の MIT ライセンスと Git 履歴を維持しています。
 
 ### npx ですぐに使う
 
@@ -44,13 +46,50 @@ claude mcp add --scope user gpt-history-mcp -- npx -y gpt-history-mcp
 ### クローンして使う
 
 ```sh
-git clone https://github.com/YunosukeYoshino/gpt-history-mcp.git
+git clone https://github.com/brianmsm/gpt-history-mcp.git
 cd gpt-history-mcp
 bun install
 ```
 
 続けて、使う MCP クライアントに登録します。以下の例の `/path/to/gpt-history-mcp` は、クローンした場所の絶対パスに置き換えてください。
 GUI アプリはシェルの `PATH` を引き継がないことがあります。GUI アプリの設定では `bun` も絶対パスで書いてください（`which bun` で調べられます。例: `/usr/local/bin/bun`）。
+
+#### Linux / Omarchy（OMP）
+
+この fork は Omarchy（Arch Linux）と Bun 1.4.4 で確認しています。
+`~/.codex/sqlite/codex-dev.db` が同期されていれば、タイトル検索に
+ChatGPT デスクトップ画面の起動や API 認証は不要です。
+
+```sh
+bun install --frozen-lockfile
+mise which bun  # Omarchy/mise での Bun の絶対パス
+bun test
+bunx tsc --noEmit
+```
+
+`~/.omp/agent/mcp.json` の既存の `mcpServers` に、以下の項目を追加します。
+Bun とリポジトリのパスは実際の絶対パスに置き換えてください。
+
+```json
+"gpt-history-mcp": {
+  "type": "stdio",
+  "command": "/absolute/path/to/bun",
+  "args": ["/absolute/path/to/gpt-history-mcp/src/index.ts"],
+  "timeout": 120000,
+  "instructions": true
+}
+```
+
+OMP で `/mcp reload` を実行します。
+`chatgpt_catalog_status` でカタログを確認し、`search_chatgpt_chats` で
+オフラインのタイトル検索を行います。次ページには `offset` を使います。
+この二つのツールは認証情報やネットワークにアクセスしません。
+`search_chatgpt_messages` と `get_chatgpt_chat` は、非公開の ChatGPT API
+に対するオンデマンドの通信です。自動同期や定期ジョブは追加しません。
+
+別のデータベースを利用する場合は MCP の `env` で
+`CHATGPT_CATALOG_PATH` に SQLite ファイルの絶対パスを指定できます。
+`CODEX_HOME` でも Codex のホームを変更できます。トークンを設定にコピーしないでください。
 
 #### Claude Code
 
@@ -113,11 +152,12 @@ bunx @modelcontextprotocol/inspector bun /path/to/gpt-history-mcp/src/index.ts
 
 | ツール | 入力 | 出力 | データ源 |
 |---|---|---|---|
-| `search_chatgpt_chats` | `query`, `limit`（既定 20） | `[{id, title, created_at, updated_at}]` | ローカルのカタログ（ネットワークなし） |
+| `search_chatgpt_chats` | `query`, `limit`（既定 20）、`offset`（既定 0） | `[{id, title, created_at, updated_at}]` | ローカルのカタログ（ネットワークなし） |
 | `search_chatgpt_messages` | `query`, `cursor?` | `{results: [{id, title, snippet, updated_at, archived}], next_cursor}` | `GET /backend-api/conversations/search` |
+| `chatgpt_catalog_status` | 引数なし | `{catalog_path, available_chats}` | ローカルのカタログ（ネットワーク・認証なし） |
 | `get_chatgpt_chat` | `id` | `{id, title, messages: [{role, content, create_time}]}` | `GET /backend-api/conversation/{id}` |
 
-- `search_chatgpt_chats` はタイトルだけを対象にします。スペース区切りの語をすべて含むものを返し、空のクエリなら最近の会話を返します。
+- `search_chatgpt_chats` はタイトルだけを対象にします。スペース区切りの語をすべて含むものを返し、空のクエリなら最近の会話を返します。次ページは `offset` で取得できます。
 - `search_chatgpt_messages` はメッセージ本文も検索します。タイトルでは見つからないときに使います。
 - `get_chatgpt_chat` は、ChatGPT で今表示されているブランチだけを返します。system、tool、非表示のメッセージは除きます。
 
@@ -141,6 +181,7 @@ bunx @modelcontextprotocol/inspector bun /path/to/gpt-history-mcp/src/index.ts
 | 環境変数 | 既定値 | 説明 |
 |---|---|---|
 | `CODEX_HOME` | `~/.codex` | `auth.json` と `sqlite/codex-dev.db` を探す場所。クライアントの `env` 設定で渡します。 |
+| `CHATGPT_CATALOG_PATH` | Codex ホームのカタログ | 認証情報の場所を変更せずに読み取り専用の SQLite カタログを指定できます。 |
 
 ## トラブルシューティング
 

@@ -25,11 +25,13 @@ Claude: → search_chatgpt_messages("ICP") → get_chatgpt_chat("6aa…") → su
 
 ## Requirements
 
-- macOS with the **ChatGPT desktop app** (the version with Codex built in), signed in and synced
+- macOS with the **ChatGPT desktop app** (the version with Codex built in), or Linux/Omarchy with a Codex-backed ChatGPT conversation catalog already synced
 - `~/.codex/auth.json` holding a ChatGPT login. Run `codex login` and sign in with your ChatGPT account to create it.
 - [Bun](https://bun.sh) 1.4 or later. The server must run on Bun: other HTTP clients are blocked by Cloudflare.
 
 ## Installation
+
+This fork is installed from the local checkout, not the upstream npm package. The original MIT license and upstream Git history are retained.
 
 ### Quick start with npx
 
@@ -44,13 +46,51 @@ For other clients, use `"command": "npx"` and `"args": ["-y", "gpt-history-mcp"]
 ### From a clone
 
 ```sh
-git clone https://github.com/YunosukeYoshino/gpt-history-mcp.git
+git clone https://github.com/brianmsm/gpt-history-mcp.git
 cd gpt-history-mcp
 bun install
 ```
 
 Then register the server with your MCP client. In the examples below, replace `/path/to/gpt-history-mcp` with the absolute path of your clone.
 GUI apps may not inherit your shell's `PATH`, so use the absolute path of `bun` there (find it with `which bun`, e.g. `/usr/local/bin/bun`).
+
+#### Linux / Omarchy with OMP
+
+This fork was tested on Omarchy (Arch Linux) with Bun 1.4.4 and a local
+`~/.codex/sqlite/codex-dev.db` catalog populated by the Codex/ChatGPT client.
+The ChatGPT desktop window does **not** need to stay open for local title search.
+
+```sh
+bun install --frozen-lockfile
+mise which bun # get the absolute Bun executable on an Omarchy/mise setup
+bun test
+bunx tsc --noEmit
+```
+
+Add the following entry inside the existing `mcpServers` object in
+`~/.omp/agent/mcp.json`, substituting the actual absolute Bun and checkout paths:
+
+```json
+"gpt-history-mcp": {
+  "type": "stdio",
+  "command": "/absolute/path/to/bun",
+  "args": ["/absolute/path/to/gpt-history-mcp/src/index.ts"],
+  "timeout": 120000,
+  "instructions": true
+}
+```
+
+Reload MCPs in OMP (`/mcp reload`) or start a new OMP session.
+Use `chatgpt_catalog_status` first to check the catalog, then
+`search_chatgpt_chats` for offline title search. Increase `offset` by `limit` to
+request additional pages. Neither tool reads authentication or contacts ChatGPT.
+`search_chatgpt_messages` and `get_chatgpt_chat` remain optional, on-demand
+requests to an undocumented remote ChatGPT endpoint (not an offline lookup).
+No synchronization daemon or scheduled job is installed.
+
+If the catalog lives elsewhere, set `CHATGPT_CATALOG_PATH` to its full SQLite file
+path in the MCP entry's `env` object; `CODEX_HOME` can also relocate the Codex
+home. No tokens should be copied into the JSON configuration.
 
 #### Claude Code
 
@@ -113,11 +153,12 @@ bunx @modelcontextprotocol/inspector bun /path/to/gpt-history-mcp/src/index.ts
 
 | Tool | Input | Output | Source |
 |---|---|---|---|
-| `search_chatgpt_chats` | `query`, `limit` (default 20) | `[{id, title, created_at, updated_at}]` | Local catalog (no network) |
+| `search_chatgpt_chats` | `query`, `limit` (default 20), `offset` (default 0) | `[{id, title, created_at, updated_at}]` | Local catalog (no network) |
 | `search_chatgpt_messages` | `query`, `cursor?` | `{results: [{id, title, snippet, updated_at, archived}], next_cursor}` | `GET /backend-api/conversations/search` |
+| `chatgpt_catalog_status` | no input | `{catalog_path, available_chats}` | Local catalog (no network or auth) |
 | `get_chatgpt_chat` | `id` | `{id, title, messages: [{role, content, create_time}]}` | `GET /backend-api/conversation/{id}` |
 
-- `search_chatgpt_chats` matches titles only. All space-separated words must match. An empty query lists the most recent chats.
+- `search_chatgpt_chats` matches titles only. All space-separated words must match. An empty query lists the most recent chats. Use `offset` to page past the first results.
 - `search_chatgpt_messages` also searches message bodies. Use it when the title is not enough.
 - `get_chatgpt_chat` returns only the branch currently shown in ChatGPT. System messages, tool messages and hidden messages are dropped.
 
@@ -141,6 +182,7 @@ bunx @modelcontextprotocol/inspector bun /path/to/gpt-history-mcp/src/index.ts
 | Variable | Default | Description |
 |---|---|---|
 | `CODEX_HOME` | `~/.codex` | Where to find `auth.json` and `sqlite/codex-dev.db`. Pass it through your client's `env` setting. |
+| `CHATGPT_CATALOG_PATH` | Codex home catalog | Override the read-only SQLite catalog path, without changing authentication location. |
 
 ## Troubleshooting
 

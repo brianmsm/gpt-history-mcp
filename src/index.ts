@@ -2,12 +2,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { openCatalog, searchCatalog } from "./catalog.ts";
+import { catalogStatus, openCatalog, searchCatalog } from "./catalog.ts";
 import { getConversation, searchConversations } from "./chatgpt.ts";
 import packageJson from "../package.json" with { type: "json" };
 
-const server = new McpServer({ name: "gpt-history-mcp", version: packageJson.version });
-const readOnly = { readOnlyHint: true, openWorldHint: true } as const;
+const server = new McpServer(
+  { name: "gpt-history-mcp", version: packageJson.version },
+  {
+    instructions: "ChatGPT catalog: use search_chatgpt_chats for offline title search and chatgpt_catalog_status for local availability; neither needs ChatGPT credentials or makes network requests. Search titles with offset for additional pages. Only when the user asks for full text or a complete conversation use search_chatgpt_messages or get_chatgpt_chat: those tools use an undocumented ChatGPT API and may fail. All tools are read-only. Do not perform bulk retrieval.",
+  },
+);
+const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });
 
 server.registerTool(
@@ -18,13 +23,31 @@ server.registerTool(
     inputSchema: {
       query: z.string().describe("Words in the title. All space-separated words must match."),
       limit: z.number().int().min(1).max(100).default(20),
+      offset: z.number().int().min(0).default(0).describe("Skip this many matches to get a later page."),
     },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { ...readOnly, openWorldHint: false },
   },
-  async ({ query, limit }) => {
+  async ({ query, limit, offset }) => {
     const db = openCatalog();
     try {
-      return json(searchCatalog(db, query, limit));
+      return json(searchCatalog(db, query, limit, offset));
+    } finally {
+      db.close();
+    }
+  },
+);
+
+server.registerTool(
+  "chatgpt_catalog_status",
+  {
+    description: "Check local ChatGPT conversation catalog path and available title count. Offline and read-only; does not open auth.json.",
+    inputSchema: {},
+    annotations: { ...readOnly, openWorldHint: false },
+  },
+  async () => {
+    const db = openCatalog();
+    try {
+      return json(catalogStatus(db));
     } finally {
       db.close();
     }

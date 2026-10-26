@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-09-25
+last_validated: 2026-10-26
 ---
 
 # AGENTS.md
@@ -18,9 +18,19 @@ A change is not done until both `bun test` and `bunx tsc --noEmit` pass.
 
 - `src/index.ts`: tool registration only. No logic here.
 - `src/chatgpt.ts`: auth, `backendGet`, API response normalization (`getConversation`, `searchConversations`)
-- `src/catalog.ts`: SQLite catalog search
+- `src/catalog.ts`: SQLite catalog search, offset paging, offline status
 - `src/linearize.ts`: conversation tree (`mapping` + `current_node`) → list of messages
 - `src/paths.ts`, `src/time.ts`: `codexHome`, `toIso`
+
+## Linux / Omarchy
+
+- This fork supports local title lookup on Linux/Omarchy via the Codex SQLite catalog.
+  The optional `CHATGPT_CATALOG_PATH` overrides only the catalog, not authentication.
+- Offline catalog calls never access the ChatGPT API or auth.json. Test this with
+  the temp-fixture MCP session in `test/omarchy.test.ts`; never use user credentials
+  in tests.
+- In OMP, keep the server as stdio with an absolute Bun executable and checkout path.
+  No periodic jobs or background collectors are needed.
 
 ## Safety
 

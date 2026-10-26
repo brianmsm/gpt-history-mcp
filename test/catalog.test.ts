@@ -1,6 +1,9 @@
 import { Database } from "bun:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { searchCatalog } from "../src/catalog.ts";
+import { catalogStatus, openCatalog, searchCatalog } from "../src/catalog.ts";
 
 function fixture() {
   const db = new Database(":memory:");
@@ -34,4 +37,41 @@ test("treats LIKE wildcards literally", () => {
 
 test("empty query lists recent chats up to the limit", () => {
   expect(searchCatalog(fixture(), "  ", 2).map((c) => c.id)).toEqual(["c2", "c1"]);
+});
+
+
+test("local catalog pagination uses offset without changing the original array response", () => {
+  const db = fixture();
+  expect(searchCatalog(db, "mcp", 1, 0).map((entry) => entry.id)).toEqual(["c2"]);
+  expect(searchCatalog(db, "mcp", 1, 1).map((entry) => entry.id)).toEqual(["c1"]);
+  expect(searchCatalog(db, "mcp", 1, 2)).toEqual([]);
+  db.close();
+});
+
+test("catalog status only counts available ChatGPT entries", () => {
+  const db = fixture();
+  expect(catalogStatus(db, "/fake/catalog.db")).toEqual({
+    catalog_path: "/fake/catalog.db",
+    available_chats: 3,
+  });
+  db.close();
+});
+
+test("read-only catalog connection enforces query_only", () => {
+  const folder = mkdtempSync(join(tmpdir(), "chatgpt-catalog-readonly-"));
+  const path = join(folder, "catalog.db");
+  try {
+    const writable = new Database(path);
+    writable.exec("CREATE TABLE sample (id INTEGER)");
+    writable.close();
+    const db = openCatalog(path);
+    try {
+      expect(db.query<{ query_only: number }, []>("PRAGMA query_only").get()?.query_only).toBe(1);
+      expect(() => db.exec("INSERT INTO sample VALUES (1)")).toThrow();
+    } finally {
+      db.close();
+    }
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
